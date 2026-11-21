@@ -2,7 +2,7 @@
 
 A small full-stack app that helps MCU fans plan their rewatch before *Avengers: Doomsday* and book an opening-night watch party.
 
-- **Backend:** FastAPI (Python) 
+- **Backend:** FastAPI
 - **Database:** Supabase 
 - **Frontend:** React + TypeScript 
 - **Tests:** pytest (45 tests, including every example table in the brief)
