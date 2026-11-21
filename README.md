@@ -1,71 +1,88 @@
 # Doomsday Ready
 
-A small full-stack app that helps MCU fans plan their rewatch before *Avengers: Doomsday* and book an opening-night watch party.
+A full-stack app for MCU fans: plan the rewatch before *Avengers: Doomsday*, and book an opening-night watch party with the fewest seat bundles.
 
-- **Backend:** FastAPI
-- **Database:** Supabase 
-- **Frontend:** React + TypeScript 
-- **Tests:** pytest (45 tests, including every example table in the brief)
+**Live app:** https://doomday-rho.vercel.app
+**API docs:** https://dooms-day-im0u.onrender.com/docs
 
-## Quick start
+The backend is on Render's free plan, which sleeps when idle, so the first request can take up to a minute.
 
-### Option A: Docker Compose (one command)
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React, TypeScript, Vite |
+| Backend | FastAPI (Python), SQLAlchemy |
+| Database | Supabase (PostgreSQL) |
+| Containers | Docker Compose |
+| Hosting | Vercel (frontend), Render (backend, Docker), Supabase (database) |
+| Tests | pytest (45 tests) |
+
+## Run it with Docker (one command)
+
+Requires Docker Desktop (or Docker Engine with the Compose plugin).
 
 ```bash
-cp .env.example .env        # optional, see "Using Supabase" below
+git clone <repository-url>
+cd doomsday-ready
 docker compose up --build
 ```
 
-Then open:
+Then open http://localhost:3000 (API docs at http://localhost:8000/docs).
 
-| What | URL |
-|---|---|
-| App | http://localhost:3000 |
-| API | http://localhost:8000/api |
-| Interactive API docs | http://localhost:8000/docs |
+With no configuration, Compose starts its own Postgres container and loads the sample data (8 movies and 4 cinemas), so the app works straight away.
 
-With no `DATABASE_URL` set, Compose uses a bundled local Postgres container and loads the sample data from the brief (8 movies, 4 cinemas) so there is something to click on straight away.
+### Using Supabase as the database
 
-### Option B: run the pieces yourself
+1. Create a project at [supabase.com](https://supabase.com).
+2. Open **SQL Editor** and run [`supabase/schema.sql`](supabase/schema.sql). The API also creates missing tables when it starts.
+3. Click **Connect** and copy the **Session pooler** connection string. Use the pooler, not the direct host, because the direct host can be IPv6-only and fail inside Docker or on hosting platforms.
+4. Copy `.env.example` to `.env` and set:
+
+   ```
+   DATABASE_URL=postgresql://postgres.<project-ref>:<password>@<pooler-host>:5432/postgres
+   SEED_SAMPLE_DATA=true
+   ```
+
+5. Run `docker compose up --build` again. The backend now uses Supabase. Check the **Table Editor** in Supabase to see the data.
+
+`.env` holds your password and is git-ignored. Never commit it.
+
+## Run without Docker
+
+You need Python 3.11+, Node 18+ and a `DATABASE_URL` pointing at Postgres (for example Supabase, as above).
 
 ```bash
 # Backend (terminal 1)
 cd backend
-python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
+python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-SEED_SAMPLE_DATA=true uvicorn app.main:app --reload    # uses SQLite unless DATABASE_URL is set
+export DATABASE_URL="postgresql://..."               # Windows PowerShell: $env:DATABASE_URL="postgresql://..."
+export SEED_SAMPLE_DATA=true
+uvicorn app.main:app --reload                        # http://localhost:8000
 
 # Frontend (terminal 2)
 cd frontend
 npm install
-npm run dev                                            # http://localhost:5173, proxies /api to :8000
+npm run dev                                          # http://localhost:5173, proxies /api to :8000
 ```
 
-### Run the tests
+### Tests
 
 ```bash
 cd backend
 pytest
 ```
 
-For the full Docker explanation, a reviewer checklist and cloud deployment steps (Supabase + Render + Vercel), see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+The 45 tests cover both algorithms and every API endpoint, including each example from the brief. They run against a temporary in-memory database, so they need no setup.
 
-## Using Supabase
+## Deployment
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. (Optional) open **SQL Editor** and run [`supabase/schema.sql`](supabase/schema.sql). The API also creates the tables itself on startup, so this step only matters if you want the tables to exist (with row level security enabled) before the app first runs.
-3. Go to **Project Settings -> Database -> Connection string -> URI** and copy it.
-4. Put it in `.env` (root folder), replacing the password placeholder:
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the Docker setup, a reviewer checklist and the Supabase + Render + Vercel steps. In short:
 
-   ```
-   DATABASE_URL=postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres
-   ```
-
-5. Start the app as above. `postgres://` and `postgresql://` URLs are both accepted.
-
-> If the direct connection fails from your machine or from Docker (the direct host can be IPv6-only), use the **Session pooler** connection string from the same Supabase page instead.
-
-The backend connects straight to Postgres with the database password, not through Supabase's REST API. `schema.sql` turns on row level security with no policies so the tables cannot be read or written through the public `anon` key.
+- **Database:** Supabase (Session pooler connection string).
+- **Backend:** Render Web Service built from `backend/Dockerfile`, with `DATABASE_URL`, `SEED_SAMPLE_DATA` and `CORS_ORIGINS` set.
+- **Frontend:** Vercel project with root directory `frontend` and `VITE_API_URL=https://<backend>/api`.
 
 ## Data model
 
@@ -91,94 +108,95 @@ erDiagram
     MOVIES ||--o{ MOVIE_PREREQUISITES : "is required by (prerequisite_id)"
 ```
 
-Movies form a directed graph: each row in `movie_prerequisites` is an edge *movie -> prerequisite*. A database `CHECK` stops a movie pointing at itself, and the API rejects longer cycles. Cinemas are independent of movies; a cinema's bundle sizes live in a single `integer[]` column (JSON on SQLite for tests).
+Movies form a directed graph: each row in `movie_prerequisites` is an edge from a movie to one of its prerequisites. A database `CHECK` constraint stops a movie from requiring itself, and the API rejects longer cycles. Cinemas are independent of movies; a cinema's bundle sizes are stored in a single Postgres `integer[]` column.
 
 ## API
 
-All endpoints live under `/api`. Errors look like `{"error": "CODE", "message": "..."}`.
+All endpoints are under `/api`. Errors have the form `{"error": "CODE", "message": "..."}`.
 
 | Method and path | Purpose |
 |---|---|
 | `POST /api/movies` | Create a movie |
 | `GET /api/movies` | List movies |
 | `PATCH /api/movies/{id}` | Update a movie, including `watched` and `prerequisite_ids` |
-| `GET /api/movies/{id}/rewatch-order` | Rewatch order (feature 1) |
+| `GET /api/movies/{id}/rewatch-order` | Rewatch order |
 | `POST /api/cinemas` | Create a cinema |
 | `GET /api/cinemas` | List cinemas |
-| `GET /api/cinemas/{id}/booking?groupSize=6` | Booking quote (feature 2) |
-| `GET /api/health` | Health check (extra) |
-
-Example movie body: `{"title": "Iron Man", "release_year": 2008, "runtime_minutes": 126, "prerequisite_ids": [], "watched": false}`
+| `GET /api/cinemas/{id}/booking?groupSize=6` | Booking quote |
+| `GET /api/health` | Health check |
 
 | Status | `error` code | When |
 |---|---|---|
-| 409 | `CIRCULAR_DEPENDENCY` | A PATCH would make a movie depend on itself, directly or through other movies |
+| 409 | `CIRCULAR_DEPENDENCY` | An update would make a movie require itself, directly or through other movies |
 | 409 | `DUPLICATE_TITLE` / `DUPLICATE_NAME` | Movie title or cinema name already exists |
-| 422 | `VALIDATION_ERROR` | Bad input (runtime outside 1-300, group size outside 1-10,000, bundle sizes outside 1-500, and so on) |
+| 422 | `VALIDATION_ERROR` | Invalid input (runtime outside 1-300, group size outside 1-10,000, bundle sizes outside 1-500, and so on) |
 | 422 | `UNKNOWN_PREREQUISITE` | A prerequisite id does not exist |
 | 404 | `MOVIE_NOT_FOUND` / `CINEMA_NOT_FOUND` | Unknown id |
 
-## How the two algorithms work
+## How the algorithms work
 
-Both are written by hand in [`backend/app/algorithms/`](backend/app/algorithms) with no graph or DP libraries.
+Both are written by hand in [`backend/app/algorithms/`](backend/app/algorithms), with no graph or dynamic-programming libraries.
 
-### Feature 1: circular dependencies and rewatch order
+### Rewatch order and cycle detection
 
-**Cycle check** ([`cycle.py`](backend/app/algorithms/cycle.py)). Giving movie `M` new prerequisites creates a cycle exactly when `M` can be reached by following prerequisites from one of the new ones (or when `M` is one of them). An iterative depth-first search walks the existing graph from the new prerequisites and returns `True` the moment it meets `M`. The movie's old prerequisites are never explored, because they are being replaced. A rejected update changes nothing.
+**Cycle check** (`cycle.py`). Giving movie `M` new prerequisites creates a cycle exactly when `M` can be reached by following prerequisites from one of the new ones (or when `M` is one of them). An iterative depth-first search walks the existing graph from the new prerequisites and returns as soon as it meets `M`. The movie's old prerequisites are skipped, because they are being replaced. A rejected update changes nothing.
 
-**Rewatch order** ([`rewatch.py`](backend/app/algorithms/rewatch.py)). An iterative depth-first search from the target emits each movie in **post-order**, meaning only after all of its own prerequisites were emitted. That is a valid topological order by construction. Movies reachable through several paths (diamonds) appear once, and the target itself is left out. A three-colour marking also detects a cycle in corrupt data and raises instead of looping forever. Iterative (not recursive) so a very long franchise chain cannot overflow the stack; a unit test uses a chain of 20,000 movies.
+**Rewatch order** (`rewatch.py`). An iterative depth-first search from the target emits each movie in post-order, which means only after all of its own prerequisites. That is a valid topological order. A movie reachable through several paths appears once, and the target itself is left out. A three-state marking (unvisited, in progress, finished) detects a cycle in corrupt data instead of looping forever. The search is iterative, so a very long chain cannot overflow the stack; a test uses a chain of 20,000 movies.
 
-The API then adds `total_count`, `watched_count` and `remaining_runtime_minutes` (sum of runtimes of the unwatched movies).
+The API also returns `total_count`, `watched_count` and `remaining_runtime_minutes`.
 
-Complexity: O(V + E) for both.
+Complexity: O(V + E).
 
-### Feature 2: booking quote
+### Booking quote
 
-[`booking.py`](backend/app/algorithms/booking.py) is the minimum coin change problem solved with bottom-up dynamic programming:
+`booking.py` solves minimum coin change with bottom-up dynamic programming:
 
 ```
 best[0] = 0
-best[t] = 1 + min(best[t - s]) for every bundle size s <= t    (unreachable if none)
+best[t] = 1 + min(best[t - s]) for every bundle size s <= t
 ```
 
-`last[t]` remembers the size used to reach `t`, so walking back from the group size to 0 gives how many of each bundle to buy. If `best[group]` is unreachable, the API answers `possible: false`. A greedy approach would be wrong here (for bundles 1, 3, 4 and 6 seats it picks 4+1+1 = 3 bundles; the right answer is 3+3 = 2).
+`last[t]` stores the bundle size used to reach `t`, so walking back from the group size to 0 gives the count of each bundle. If the group size cannot be reached, the API answers `possible: false`. A greedy approach is wrong here: for bundles of 1, 3 and 4 and a group of 6, greedy picks 4+1+1 (3 bundles) while the best is 3+3 (2 bundles).
 
 Complexity: O(group size x number of bundle sizes), at most 10,000 x 10 = 100,000 steps.
 
-## Assumptions and choices
+## Assumptions and design decisions
 
-The brief left these open, so here is what I decided:
+The brief left these open:
 
-- **Prerequisites are sent as movie ids** (`prerequisite_ids`), not titles. Unknown ids are rejected with 422.
-- **Duplicates:** titles and cinema names are unique ignoring upper/lower case and surrounding spaces. Duplicate prerequisite ids in one request are merged. Duplicate bundle sizes in one cinema are rejected with 422, since the brief says "different bundle sizes". Bundle sizes are stored sorted.
-- **Release year** must be between 1888 and 2100. The brief gave no range.
-- **Cycle check on create:** a brand-new movie has no id yet, so nothing can depend on it and no cycle is possible. The check runs on PATCH, where it can happen.
-- **Deleting movies/cinemas** is not part of the brief, so there is no delete endpoint.
-- **Booking ties:** when several combinations use the same minimum number of bundles, one is returned (the brief's examples each have a single answer). The quote lists larger bundles first.
-- **"Not possible"** is a normal `200` response with `possible: false`, not an error, because it is a valid answer to the question.
+- **Prerequisites are sent as movie ids** (`prerequisite_ids`). Unknown ids are rejected with 422.
+- **Uniqueness:** titles and cinema names are unique ignoring case and surrounding spaces. Duplicate prerequisite ids in one request are merged. Duplicate bundle sizes in one cinema are rejected with 422, since the brief asks for different sizes. Bundle sizes are stored sorted.
+- **Release year** must be between 1888 and 2100, since no range was given.
+- **Cycle check on create:** a new movie has no id yet, so nothing can depend on it. The check runs on update, where a cycle can appear.
+- **No delete endpoints**, because the brief does not require them.
+- **Booking ties:** when several combinations use the same minimum number of bundles, one is returned. Larger bundles are listed first.
+- **"Not possible"** is a normal `200` response with `possible: false`, because it is a valid answer.
 - **Group size** outside 1-10,000 returns 422.
-- **Rewatch order** between movies that are not connected by any prerequisite is by ascending id, so results are repeatable.
-- **Sample data** is the brief's table. Runtimes and years are approximate, and the runtime of *Avengers: Doomsday* (150) is a placeholder because it is unreleased. Seeding only happens when `SEED_SAMPLE_DATA=true` and the movies table is empty.
-- **Frontend extras:** the Rewatch Plan view lets you tick movies as watched too, and the Booking view has a small form to add a cinema, so the app is usable from an empty database.
+- **Rewatch order** for movies not connected to each other is by ascending id, so results are repeatable.
+- **Sample data** comes from the brief's example. Runtimes and years are approximate, and the runtime of *Avengers: Doomsday* (150) is a placeholder because it is unreleased. Seeding runs only when `SEED_SAMPLE_DATA=true` and the movies table is empty.
+- **Frontend extras:** the Rewatch Plan page lets you tick movies as watched, and the Booking page has a form to add a cinema, so the app is usable from an empty database.
 
 ## How I used AI
 
-> **Edit this section so it describes what you actually did before you submit.**
+I used Claude (Anthropic) as an AI assistant during this project:
 
-I used Claude (Anthropic) as a coding assistant. I used it to:
+- **Planning:** to read the brief and compare stack options before I chose FastAPI, Supabase and React.
+- **Code:** it generated the first version of the FastAPI backend, the React views, the Dockerfiles and the tests, including tests built from the brief's example tables.
+- **Documentation:** it drafted the first version of this README and DEPLOYMENT.md.
 
-- read the brief and compare technology options, then choose the stack
-- generate the first version of the FastAPI app, database models, React views, Dockerfiles and this README
-- write the unit and API tests from the brief's example tables
+What I did myself:
 
-I reviewed the code, ran the tests, and I can explain every part, in particular the two algorithms in `backend/app/algorithms/`.
+- Created the Supabase project, wrote the connection string and deployed to Render and Vercel.
+- Debugged the real deployment problems: a wrong Supabase pooler username and host, a missing `/api` in the frontend API URL, and a CORS origin mismatch.
+- Ran the tests and the app and checked the behaviour against the brief.
+- Reviewed the two algorithms in `backend/app/algorithms/` and I can explain how they work.
 
 ## Project layout
 
 ```
 backend/
   app/
-    algorithms/     cycle.py, rewatch.py, booking.py   (hand-written)
+    algorithms/     cycle.py, rewatch.py, booking.py
     routers/        movies.py, cinemas.py
     models.py  schemas.py  errors.py  database.py  config.py  seed.py  main.py
   tests/            test_algorithms.py, test_api.py
@@ -187,4 +205,5 @@ frontend/src/
   api.ts  types.ts  App.tsx  styles.css
 supabase/schema.sql
 docker-compose.yml
+DEPLOYMENT.md
 ```
