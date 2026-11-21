@@ -1,4 +1,4 @@
-# Doomsday Ready
+# Doomsday
 
 A full-stack app for MCU fans: plan the rewatch before *Avengers: Doomsday*, and book an opening-night watch party with the fewest seat bundles.
 
@@ -12,7 +12,7 @@ The backend is on Render's free plan, which sleeps when idle, so the first reque
 | Layer | Technology |
 |---|---|
 | Frontend | React, TypeScript, Vite |
-| Backend | FastAPI (Python), SQLAlchemy |
+| Backend | FastAPI |
 | Database | Supabase (PostgreSQL) |
 | Containers | Docker Compose |
 | Hosting | Vercel (frontend), Render (backend, Docker), Supabase (database) |
