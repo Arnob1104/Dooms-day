@@ -2,9 +2,9 @@
 
 A small full-stack app that helps MCU fans plan their rewatch before *Avengers: Doomsday* and book an opening-night watch party.
 
-- **Backend:** FastAPI (Python) + SQLAlchemy
-- **Database:** Supabase (Postgres), with a local Postgres / SQLite fallback
-- **Frontend:** React + TypeScript + Vite
+- **Backend:** FastAPI (Python) 
+- **Database:** Supabase 
+- **Frontend:** React + TypeScript 
 - **Tests:** pytest (45 tests, including every example table in the brief)
 
 ## Quick start
